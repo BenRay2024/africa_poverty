@@ -15,7 +15,7 @@ import numpy as np
 import tensorflow as tf
 
 
-ROOT_DIR = '/atlas/u/chrisyeh/africa_poverty/'
+ROOT_DIR = '/Users/ben1/Library/CloudStorage/OneDrive-Personal/Documents/HARVARD/EC_985/africa_poverty/'
 
 
 # ====================

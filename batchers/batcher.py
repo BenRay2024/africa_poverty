@@ -6,7 +6,7 @@ import os
 import tensorflow as tf
 
 
-ROOT_DIR = '/atlas/u/chrisyeh/africa_poverty/'
+ROOT_DIR = '/Users/ben1/Library/CloudStorage/OneDrive-Personal/Documents/HARVARD/EC_985/africa_poverty/'
 DHS_TFRECORDS_PATH_ROOT = os.path.join(ROOT_DIR, 'data/dhs_tfrecords')
 LSMS_TFRECORDS_PATH_ROOT = os.path.join(ROOT_DIR, 'data/lsms_tfrecords')
 
@@ -179,9 +179,9 @@ class Batcher():
         # prefetch 2 batches at a time
         dataset = dataset.prefetch(2)
 
-        iterator = dataset.make_initializable_iterator()
+        iterator = iter(dataset)
         batch = iterator.get_next()
-        iter_init = iterator.initializer
+        iter_init = iterator
         return iter_init, batch
 
     def process_tfrecords(self, example_proto):
@@ -214,11 +214,11 @@ class Batcher():
 
         keys_to_features = {}
         for band in bands:
-            keys_to_features[band] = tf.FixedLenFeature(shape=[255**2], dtype=tf.float32)
+            keys_to_features[band] = tf.io.FixedLenFeature(shape=[255**2], dtype=tf.float32)
         for key in scalar_float_keys:
-            keys_to_features[key] = tf.FixedLenFeature(shape=[], dtype=tf.float32)
+            keys_to_features[key] = tf.io.FixedLenFeature(shape=[], dtype=tf.float32)
 
-        ex = tf.parse_single_example(example_proto, features=keys_to_features)
+        ex = tf.io.parse_single_example(example_proto, features=keys_to_features)
         loc = tf.stack([ex['lat'], ex['lon']])
         year = tf.cast(ex.get('year', -1), tf.int32)
 
@@ -474,9 +474,9 @@ class ResidualBatcher(Batcher):
         # prefetch 2 batches at a time
         dataset = dataset.prefetch(2)
 
-        iterator = dataset.make_initializable_iterator()
+        iterator = iter(dataset)
         batch = iterator.get_next()
-        iter_init = iterator.initializer
+        iter_init = iterator
         return iter_init, batch
 
     def merge_residuals(self, parsed_dict, pred):

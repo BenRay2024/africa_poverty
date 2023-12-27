@@ -32,8 +32,10 @@ def get_first_feature_map(tfrecord_path: str):
     '''
     # Create an iterator over the TFRecords file. The iterator yields
     # the binary representations of Example messages as strings.
-    options = tf.io.TFRecordOptions(tf.io.TFRecordCompressionType.GZIP)
-    iterator = tf.io.tf_record_iterator(tfrecord_path, options=options)
+    # options = tf.io.TFRecordOptions(tf.compat.v1.io.TFRecordCompressionType.GZIP)
+    # iterator = tf.compat.v1.io.tf_record_iterator(tfrecord_path, options=options)
+    data = tf.data.TFRecordDataset(tfrecord_path, compression_type='GZIP')
+    iterator = data.as_numpy_iterator()
 
     # get the first Example stored in the TFRecords file
     record_str = next(iterator)
@@ -124,66 +126,61 @@ def analyze_tfrecord_batch(iter_init, batch_op, total_num_images, nbands, k=20):
     # number of `good pixels` in each image
     num_good_pixels = []
 
-    with tf.Session() as sess:
-        if iter_init is not None:
-            sess.run(iter_init)
+    while True:
+        try:
+            batch_start_time = time.time()
+            img_batch, loc_batch, label_batch, year_batch = \
+                batch_op['images'], batch_op['locs'], batch_op['labels'], batch_op['years']
+            batch_size = len(img_batch)
 
-        while True:
-            try:
-                batch_start_time = time.time()
-                batch_np = sess.run(batch_op)
-                img_batch, loc_batch, label_batch, year_batch = \
-                    batch_np['images'], batch_np['locs'], batch_np['labels'], batch_np['years']
-                batch_size = len(img_batch)
+            processing_start_time = time.time()
+            batch_times.append(processing_start_time - batch_start_time)
 
-                processing_start_time = time.time()
-                batch_times.append(processing_start_time - batch_start_time)
+            dmsp_mask = (year_batch < 2012)
+            dmsp_bands = np.arange(nbands-1)
+            viirs_mask = ~dmsp_mask
+            viirs_bands = [i for i in range(nbands) if i != nbands-2]
 
-                dmsp_mask = (year_batch < 2012)
-                dmsp_bands = np.arange(nbands-1)
-                viirs_mask = ~dmsp_mask
-                viirs_bands = [i for i in range(nbands) if i != nbands-2]
+            # a good pixel is one where at least 1 band is > 0
+            batch_goodpx = np.any(img_batch > 0, axis=3)
+            num_good_pixels_per_image = np.sum(batch_goodpx, axis=(1,2))
+            num_good_pixels.extend(num_good_pixels_per_image)
 
-                # a good pixel is one where at least 1 band is > 0
-                batch_goodpx = np.any(img_batch > 0, axis=3)
-                num_good_pixels_per_image = np.sum(batch_goodpx, axis=(1,2))
-                num_good_pixels.extend(num_good_pixels_per_image)
+            img_batch_positive = np.where(img_batch <= 0, np.inf, img_batch)
+            img_batch_nonneg = np.where(img_batch < 0, 0, img_batch)
 
-                img_batch_positive = np.where(img_batch <= 0, np.inf, img_batch)
-                img_batch_nonneg = np.where(img_batch < 0, 0, img_batch)
+            for mask, bands in [(dmsp_mask, dmsp_bands), (viirs_mask, viirs_bands)]:
+                if np.sum(mask) == 0: continue
 
-                for mask, bands in [(dmsp_mask, dmsp_bands), (viirs_mask, viirs_bands)]:
-                    if np.sum(mask) == 0: continue
+                imgs = img_batch[mask]
+                imgs_positive = img_batch_positive[mask]
+                imgs_nonneg = img_batch_nonneg[mask]
 
-                    imgs = img_batch[mask]
-                    imgs_positive = img_batch_positive[mask]
-                    imgs_nonneg = img_batch_nonneg[mask]
+                goodpx = batch_goodpx[mask]
+                imgs_goodpx = imgs[goodpx]  # shape [len(mask), nbands]
 
-                    goodpx = batch_goodpx[mask]
-                    imgs_goodpx = imgs[goodpx]  # shape [len(mask), nbands]
+                mins[bands] = np.minimum(mins[bands], np.min(imgs, axis=(0,1,2)))
+                mins_nz[bands] = np.minimum(mins_nz[bands], np.min(imgs_positive, axis=(0,1,2)))
+                mins_goodpx[bands] = np.minimum(mins_goodpx[bands], np.min(imgs_goodpx, axis=0))
+                maxs[bands] = np.maximum(maxs[bands], np.max(imgs, axis=(0,1,2)))
 
-                    mins[bands] = np.minimum(mins[bands], np.min(imgs, axis=(0,1,2)))
-                    mins_nz[bands] = np.minimum(mins_nz[bands], np.min(imgs_positive, axis=(0,1,2)))
-                    mins_goodpx[bands] = np.minimum(mins_goodpx[bands], np.min(imgs_goodpx, axis=0))
-                    maxs[bands] = np.maximum(maxs[bands], np.max(imgs, axis=(0,1,2)))
+                # use dtype=np.float64 to avoid significant loss of precision in np.sum
+                sums[bands] += np.sum(imgs_nonneg, axis=(0,1,2), dtype=np.float64)
+                sum_sqs[bands] += np.sum(imgs_nonneg ** 2, axis=(0,1,2), dtype=np.float64)
+                nz_pixels[bands] += np.sum(imgs > 0, axis=(0,1,2))
 
-                    # use dtype=np.float64 to avoid significant loss of precision in np.sum
-                    sums[bands] += np.sum(imgs_nonneg, axis=(0,1,2), dtype=np.float64)
-                    sum_sqs[bands] += np.sum(imgs_nonneg ** 2, axis=(0,1,2), dtype=np.float64)
-                    nz_pixels[bands] += np.sum(imgs > 0, axis=(0,1,2))
+            # update the k-worst heap
+            for i in range(batch_size):
+                data = (label_batch[i], year_batch[i], tuple(loc_batch[i]), img_batch[i])
+                add_to_heap(k_worst, k=k, value=-num_good_pixels_per_image[i], data=data)
 
-                # update the k-worst heap
-                for i in range(batch_size):
-                    data = (label_batch[i], year_batch[i], tuple(loc_batch[i]), img_batch[i])
-                    add_to_heap(k_worst, k=k, value=-num_good_pixels_per_image[i], data=data)
+            processing_times.append(time.time() - processing_start_time)
 
-                processing_times.append(time.time() - processing_start_time)
-
-                images_count += batch_size
-                if images_count % 1024 == 0:
-                    print(f'\rProcessed {images_count}/{total_num_images} images...', end='')
-            except tf.errors.OutOfRangeError:
-                break
+            images_count += batch_size
+            if images_count % 1024 == 0:
+                print(f'\rProcessed {images_count}/{total_num_images} images...', end='')
+        except tf.errors.OutOfRangeError:
+            break
 
     total_time = time.time() - start
     assert len(num_good_pixels) == images_count

@@ -15,7 +15,7 @@ import numpy as np
 import tensorflow as tf
 
 
-ROOT_DIR = '/atlas/u/chrisyeh/africa_poverty/'
+ROOT_DIR = '/Users/ben1/Library/CloudStorage/OneDrive-Personal/Documents/HARVARD/EC_985/africa_poverty/'
 
 
 def run_training(sess, ooc, batcher_type, dataset, keep_frac, model_name, model_params, batch_size,
@@ -362,7 +362,7 @@ if __name__ == '__main__':
     flags.DEFINE_float('fc_reg', 1e-3, 'Regularization penalty factor for fully connected layers')
     flags.DEFINE_float('conv_reg', 1e-3, 'Regularization penalty factor for convolution layers')
     flags.DEFINE_float('lr', 1e-3, 'Learning rate for optimizer')
-    flags.DEFINE_float('lr_decay', 1.0, 'Decay rate of the learning rate (default 1.0 for no decay)')
+    flags.DEFINE_float('lr_decay', 0.96, 'Decay rate of the learning rate (default 1.0 for no decay)')
 
     # high-level model control
     flags.DEFINE_string('model_name', 'resnet', 'name of the model to be used, one of ["resnet" (default), "vggf", "simplecnn", "resnetcombo"]')
