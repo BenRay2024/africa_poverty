@@ -7,6 +7,10 @@ outputs/
 data/dhs_surveys*
 data/dhs_tfrecords*
 data/lsms_tfrecords*
+download/ec985-thesis.json
+data/test.npz
+data/train*.npz
+data/val.npz
 .DS_Store
 # END CUSTOM EXCLUSIONS
 
